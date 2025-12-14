@@ -2,106 +2,73 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>i-Parts Hub (Offline)</title>
-    <link href="assets/css/bootstrap.min.css" rel="stylesheet">
-    <link href="assets/css/all.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPart 零件管理系統 (<?= $_SESSION['user_id'] ?? 'Guest' ?>)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { min-height: 100vh; overflow-x: hidden; background-color: #f1f5f9; }
-        .sidebar { min-height: 100vh; background-color: #0f172a; width: 260px; position: fixed; }
-        .sidebar .nav-link { color: #94a3b8; padding: 15px 20px; }
-        .sidebar .nav-link:hover, .sidebar .nav-link.active { color: #fff; background: #1e293b; border-left: 4px solid #3b82f6; }
-        .main-content { margin-left: 260px; padding: 30px; min-height: 100vh; }
-        .card { border: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-
-        /* --- ★ 新增：低飽和度表單修飾樣式 ★ --- */
-        
-        /* 1. 輸入框與下拉選單基礎樣式 */
-        .form-control, .form-select, .input-group-text {
-            border: 1px solid #94a3b8; /* 使用較深的低飽和藍灰色邊框 */
-            background-color: #f8fafc; /* 極淺的冷灰色背景，增加實體感 */
-            color: #334155; /* 稍微柔和的深色文字 */
-            transition: all 0.2s ease-in-out;
-        }
-
-        /* 2. 輸入框焦點狀態 (滑鼠點擊時) */
-        .form-control:focus, .form-select:focus {
-            background-color: #fff; /* 聚焦時變回純白背景，提升輸入清晰度 */
-            border-color: #64748b; /* 邊框變得更深一點 */
-            /* 使用低飽和度的柔和光暈，取代原本刺眼的亮藍色 */
-            box-shadow: 0 0 0 0.25rem rgba(100, 116, 139, 0.2);
-        }
-
-        /* 3. Checkbox 與 Radio 勾選框基礎樣式 */
-        .form-check-input {
-            border: 2px solid #94a3b8; /* 加粗邊框，讓它更明顯 */
-            background-color: #f1f5f9;
-        }
-
-        /* 4. 勾選框焦點狀態 */
-        .form-check-input:focus {
-            border-color: #64748b;
-            box-shadow: 0 0 0 0.25rem rgba(100, 116, 139, 0.2);
-        }
-
-        /* 5. 勾選框「選中」狀態 */
-        .form-check-input:checked {
-            background-color: #64748b; /* 使用沉穩的低飽和藍灰色填充 */
-            border-color: #64748b;
-        }
-
-        /* 6. 特別處理大開關 (Switch) 的選中顏色 */
-        .form-switch .form-check-input:checked {
-            background-color: #64748b; /* 統一使用低飽和色系 */
-            border-color: #64748b;
-        }
-
-        /* 7. 調整 Placeholder (提示文字) 的顏色，讓它清晰但不搶眼 */
-        ::placeholder {
-            color: #94a3b8 !important;
-            opacity: 1;
-        }
-        /* --- ★ 修飾結束 ★ --- */
-
+        body { background-color: #f8f9fa; font-family: "Microsoft JhengHei", sans-serif; }
+        .navbar-brand { font-weight: bold; letter-spacing: 1px; }
+        .card { border-radius: 8px; }
+        .table-hover tbody tr:hover { background-color: rgba(0,0,0,.03); }
     </style>
 </head>
-<body>
-    <div class="d-flex">
-        <div class="sidebar d-flex flex-column p-3">
-            <h4 class="text-white mb-4 px-3"><i class="fas fa-microchip me-2"></i>i-Parts Hub</h4>
-            <ul class="nav nav-pills flex-column mb-auto">
-                <?php $curr_route = $_GET['route'] ?? 'dashboard'; ?>
-                <li class="nav-item">
-                    <a href="index.php?route=dashboard" class="nav-link <?= $curr_route == 'dashboard' ? 'active' : '' ?>">
-                        <i class="fas fa-chart-line me-2"></i>上機率看板
-                    </a>
-                </li>
-                <li>
-                    <a href="index.php?route=ops" class="nav-link <?= in_array($curr_route, ['ops', 'ops_new', 'inventory', 'ops_edit']) ? 'active' : '' ?>">
-                        <i class="fas fa-tools me-2"></i>作業中心
-                    </a>
-                </li>
-                <li>
-                    <a href="index.php?route=ipart_pending" class="nav-link <?= $curr_route == 'ipart_pending' ? 'active' : '' ?>">
-                        <i class="fas fa-clipboard-check me-2"></i>待補登
-                    </a>
-                </li>
-                <li>
-                    <a href="index.php?route=admin" class="nav-link <?= $curr_route == 'admin' ? 'active' : '' ?>">
-                        <i class="fas fa-user-cog me-2"></i>管理員頁面
-                    </a>
-                </li>
-                <li>
-                    <a href="index.php?route=logout" class="nav-link text-danger mt-3">
-                        <i class="fas fa-sign-out-alt me-2"></i>登出
-                    </a>
-                </li>
-            </ul>
-            <div class="text-secondary small px-3 mt-4">Offline Ver 1.4 (UI Update)</div>
+<body class="d-flex flex-column min-vh-100">
+
+    <?php if (isset($_SESSION['user_id'])): ?>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="index.php?route=dashboard">
+                <i class="fas fa-tools me-2"></i>iPart 系統 <span class="badge bg-secondary text-white ms-1"><?= $_SESSION['user_id'] ?></span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link <?= ($route=='dashboard')?'active':'' ?>" href="index.php?route=dashboard"><i class="fas fa-chart-line me-1"></i> 儀表板</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= ($route=='ops'||$route=='ops_new'||$route=='ops_edit')?'active':'' ?>" href="index.php?route=ops"><i class="fas fa-clipboard-list me-1"></i> 作業中心</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= ($route=='inventory')?'active':'' ?>" href="index.php?route=inventory"><i class="fas fa-boxes me-1"></i> 庫存明細</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= ($route=='ipart_pending')?'active':'' ?>" href="index.php?route=ipart_pending"><i class="fas fa-exclamation-circle me-1"></i> 待補登</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item me-2">
+                        <a class="nav-link btn btn-outline-secondary text-light <?= ($route=='admin')?'active':'' ?>" href="index.php?route=admin">
+                            <i class="fas fa-user-cog me-1"></i> 管理者頁面
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-danger" href="index.php?route=logout"><i class="fas fa-sign-out-alt me-1"></i> 登出</a>
+                    </li>
+                </ul>
+            </div>
         </div>
-        <div class="main-content w-100">
-            <?= $content ?>
-        </div>
+    </nav>
+    <?php endif; ?>
+
+    <div class="container flex-grow-1">
+        <?php if (isset($error)): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="fas fa-exclamation-triangle me-2"></i> <?= $error ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        <?php endif; ?>
+
+        <?= $content ?? '' ?>
     </div>
-    <script src="assets/js/bootstrap.bundle.min.js"></script>
+
+    <footer class="bg-light text-center text-muted py-3 mt-4 border-top">
+        <small>&copy; <?= date('Y') ?> iPart Management System. All rights reserved.</small>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

@@ -8,29 +8,19 @@ $departments = [
 
 try {
     $globalDb = new PDO('sqlite:global.db');
-    $globalDb->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    
-    // 原有的 Part Master
-    $globalDb->exec("CREATE TABLE IF NOT EXISTS part_master (part_no TEXT PRIMARY KEY, name TEXT, vendor TEXT)");
-    
-    // ★ 新增：機台主檔 (Tool Master)
-    $globalDb->exec("CREATE TABLE IF NOT EXISTS tool_master (name TEXT PRIMARY KEY)");
-    
-    // ★ 新增：儲存位置主檔 (Location Master)
-    $globalDb->exec("CREATE TABLE IF NOT EXISTS location_master (name TEXT PRIMARY KEY)");
-
-    echo "[Global DB] 初始化完成 (含 Tool/Location Master)<br>";
 } catch (PDOException $e) {
     echo "Global DB Error: " . $e->getMessage();
 }
 
-// ... (下方各部門 DB 初始化程式碼維持不變) ...
 foreach ($departments as $dept) {
     $dbFile = "{$dept}.db";
+    
     try {
         $db = new PDO("sqlite:{$dbFile}");
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $sql = "
+        
+        // 1. 建立流水帳表
+        $sqlLog = "
             CREATE TABLE IF NOT EXISTS part_lifecycle (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dept TEXT,
@@ -42,11 +32,26 @@ foreach ($departments as $dept) {
                 location TEXT,
                 ipart_logged INTEGER DEFAULT 0,
                 remark TEXT,
+                category TEXT,  -- ★ 新增分類欄位
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ";
-        $db->exec($sql);
-        echo "[{$dept}] DB 初始化完成<br>";
+        $db->exec($sqlLog);
+
+        // ★ 自動檢查並補上 category 欄位 (針對舊資料庫)
+        $cols = $db->query("PRAGMA table_info(part_lifecycle)")->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('category', $cols)) {
+            $db->exec("ALTER TABLE part_lifecycle ADD COLUMN category TEXT");
+            echo "[{$dept}] 已自動更新資料庫結構 (新增 category 欄位)<br>";
+        }
+
+        // 2. 主檔表
+        $db->exec("CREATE TABLE IF NOT EXISTS part_master (part_no TEXT PRIMARY KEY, name TEXT, vendor TEXT)");
+        $db->exec("CREATE TABLE IF NOT EXISTS tool_master (name TEXT PRIMARY KEY)");
+        $db->exec("CREATE TABLE IF NOT EXISTS location_master (name TEXT PRIMARY KEY)");
+
+        echo "[{$dept}] DB 初始化/檢查完成<br>";
+
     } catch (PDOException $e) {
         echo "[{$dept}] Error: " . $e->getMessage() . "<br>";
     }
