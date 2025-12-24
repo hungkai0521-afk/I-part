@@ -1,71 +1,71 @@
 <?php ob_start(); ?>
-
-<div class="d-flex justify-content-between align-items-end mb-4">
-    <div>
-        <div class="d-flex align-items-center gap-3 mb-2">
-            <h3 class="fw-bold mb-0"><i class="fas fa-clipboard-list me-2 text-primary"></i>作業中心</h3>
-            
-            <div id="guide_links">
-                <a href="http://p58mesweb03.umc.com:8084/PMMWebSite/eParts/Login/login.cshtml?returnUrl=%2fPMMWebSite%2feParts%2fDefault" target="_blank" class="btn btn-sm btn-outline-primary shadow-sm" title="前往 iPart 系統">
-                    <i class="fas fa-external-link-alt me-1"></i> iPart 系統
-                </a>
-                <a href="Notes://F12AD16/48257DB0002B1BBC/EF9C1CE35692F71348256C5C0034F18C/6D22BDA971349EBD48258D63003116BF" class="btn btn-sm btn-outline-secondary shadow-sm" title="開啟 Notes 待建料資料庫">
-                    <i class="fas fa-database me-1"></i> 待建料 DB
-                </a>
-            </div>
-        </div>
-        <p class="text-muted mb-0">目前部門: <span class="badge bg-dark"><?= $curr_dept ?></span></p>
+<div class="row mb-4">
+    <div class="col-md-8">
+        <h2 class="fw-bold text-dark"><i class="fas fa-clipboard-list me-2"></i>作業中心 (Operations)</h2>
+        <p class="text-muted">請選擇作業項目，或查詢下方流水帳。</p>
     </div>
     
-    <form class="d-flex align-items-end gap-2" method="GET" action="index.php" id="guide_filter">
-        <input type="hidden" name="route" value="ops">
-        <div>
-            <label class="form-label small text-muted mb-0">起始日期</label>
-            <input type="date" name="start_date" class="form-control form-control-sm" value="<?= $start_date ?>">
+    <div class="col-md-4 text-end" id="guide_links">
+        <div class="btn-group shadow-sm">
+            <a href="http://p58mesweb03.umc.com:8084/PMMWebSite/eParts/Login/login.cshtml?returnUrl=%2fPMMWebSite%2feParts%2fDefault" target="_blank" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-external-link-alt me-1"></i> iPart
+            </a>
+            <a href="Notes://F12AD16/48257DB0002B1BBC/EF9C1CE35692F71348256C5C0034F18C/6D22BDA971349EBD48258D63003116BF" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-database me-1"></i> 待建料
+            </a>
         </div>
-        <div>
-            <label class="form-label small text-muted mb-0">結束日期</label>
-            <input type="date" name="end_date" class="form-control form-control-sm" value="<?= $end_date ?>">
-        </div>
-        <button type="submit" class="btn btn-sm btn-secondary align-self-end">
-            <i class="fas fa-search"></i> 查詢
-        </button>
-        <a href="index.php?route=ops_export_csv&start_date=<?= $start_date ?>&end_date=<?= $end_date ?>" class="btn btn-sm btn-success align-self-end" title="匯出 CSV">
-            <i class="fas fa-file-csv me-1"></i> 匯出
-        </a>
-    </form>
+    </div>
 </div>
 
-<div class="row mb-4">
+<div class="row mb-4 g-3">
     <div class="col-md-4">
-        <a href="index.php?route=ops_new&status=IN" id="guide_in" class="card text-decoration-none h-100 shadow-sm border-0 bg-primary bg-opacity-10 hover-shadow transition-link">
-            <div class="card-body d-flex align-items-center justify-content-between text-primary">
-                <div><h5 class="fw-bold mb-0">進料 (IN)</h5><small>零件入庫、建立庫存</small></div>
-                <i class="fas fa-truck-loading fa-2x opacity-50"></i>
+        <a href="index.php?route=ops_new&status=IN" class="card text-decoration-none shadow-sm h-100 border-primary border-top border-4 hover-shadow" id="guide_in">
+            <div class="card-body text-center py-4">
+                <div class="display-4 text-primary mb-2"><i class="fas fa-dolly"></i></div>
+                <h4 class="fw-bold text-dark">進料 (IN)</h4>
+                <p class="text-muted small mb-0">廠商進貨 / 領出備品入庫</p>
             </div>
         </a>
     </div>
     <div class="col-md-4">
-        <a href="index.php?route=ops_new&status=ON" id="guide_on" class="card text-decoration-none h-100 shadow-sm border-0 bg-success bg-opacity-10 hover-shadow transition-link">
-            <div class="card-body d-flex align-items-center justify-content-between text-success">
-                <div><h5 class="fw-bold mb-0">上機 (ON)</h5><small>安裝零件、扣除庫存</small></div>
-                <i class="fas fa-tools fa-2x opacity-50"></i>
+        <a href="index.php?route=ops_new&status=ON" class="card text-decoration-none shadow-sm h-100 border-success border-top border-4 hover-shadow" id="guide_on">
+            <div class="card-body text-center py-4">
+                <div class="display-4 text-success mb-2"><i class="fas fa-wrench"></i></div>
+                <h4 class="fw-bold text-dark">上機 (ON)</h4>
+                <p class="text-muted small mb-0">領料上機 / 扣除庫存</p>
             </div>
         </a>
     </div>
     <div class="col-md-4">
-        <a href="index.php?route=ops_new&status=OUT" id="guide_out" class="card text-decoration-none h-100 shadow-sm border-0 bg-secondary bg-opacity-10 hover-shadow transition-link">
-            <div class="card-body d-flex align-items-center justify-content-between text-secondary">
-                <div><h5 class="fw-bold mb-0">退料 (OUT)</h5><small>故障退回、批次處理</small></div>
-                <i class="fas fa-box-open fa-2x opacity-50"></i>
+        <a href="index.php?route=ops_new&status=OUT" class="card text-decoration-none shadow-sm h-100 border-secondary border-top border-4 hover-shadow" id="guide_out">
+            <div class="card-body text-center py-4">
+                <div class="display-4 text-secondary mb-2"><i class="fas fa-sign-out-alt"></i></div>
+                <h4 class="fw-bold text-dark">退料 (OUT)</h4>
+                <p class="text-muted small mb-0">故障送修 / 報廢 / 退回</p>
             </div>
         </a>
     </div>
 </div>
 
-<div class="card border-0 shadow-sm" id="guide_table">
-    <div class="card-header bg-white fw-bold py-3">
-        <i class="fas fa-history me-2"></i>近期異動紀錄 (<?= count($logs) ?> 筆)
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-history me-2"></i>近期流水帳 (Logbook)</h5>
+        
+        <form class="d-flex align-items-center gap-2" id="guide_filter">
+            <input type="hidden" name="route" value="ops">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text bg-light">From</span>
+                <input type="date" name="start_date" class="form-control" value="<?= $_GET['start_date'] ?? date('Y-m-d', strtotime('-7 days')) ?>">
+            </div>
+            <div class="input-group input-group-sm">
+                <span class="input-group-text bg-light">To</span>
+                <input type="date" name="end_date" class="form-control" value="<?= $_GET['end_date'] ?? date('Y-m-d') ?>">
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search"></i></button>
+            <a href="index.php?route=ops_export_csv&start_date=<?= $start_date ?>&end_date=<?= $end_date ?>" class="btn btn-success btn-sm ms-1" title="匯出 CSV">
+                <i class="fas fa-file-csv"></i>
+            </a>
+        </form>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -73,48 +73,39 @@
                 <thead class="table-light">
                     <tr>
                         <th>狀態</th>
-                        <th>日期時間</th>
-                        <th>料號</th>
-                        <th>品名</th>
-                        <th>廠商</th>
-                        <th>S/N</th>
-                        <th>位置/機台</th>
-                        <th>分類</th>
-                        <th>iPart</th>
+                        <th>時間</th>
+                        <th>料號 / 品名</th>
+                        <th>序號 (S/N)</th>
+                        <th>位置 / 機台</th>
+                        <th>操作者</th>
+                        <th>備註</th>
+                        <th class="text-end">管理</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if (empty($logs)): ?>
-                        <tr><td colspan="9" class="text-center py-5 text-muted">查無此區間資料</td></tr>
+                        <tr><td colspan="8" class="text-center py-5 text-muted">查無資料</td></tr>
                     <?php else: ?>
-                        <?php foreach ($logs as $log): ?>
+                        <?php foreach ($logs as $row): ?>
                         <tr>
                             <td>
                                 <?php 
-                                    $statusColors = [
-                                        'IN' => 'bg-primary',
-                                        'ON' => 'bg-success',
-                                        'OUT' => 'bg-secondary'
-                                    ];
-                                    $badgeClass = isset($statusColors[$log['status']]) ? $statusColors[$log['status']] : 'bg-light text-dark';
+                                    $badges = ['IN'=>'bg-primary', 'ON'=>'bg-success', 'OUT'=>'bg-secondary'];
+                                    $bg = $badges[$row['status']] ?? 'bg-dark';
                                 ?>
-                                <span class="badge <?= $badgeClass ?>"><?= $log['status'] ?></span>
+                                <span class="badge <?= $bg ?>"><?= $row['status'] ?></span>
                             </td>
-                            <td class="small text-muted"><?= date('Y-m-d H:i', strtotime($log['created_at'])) ?></td>
-                            <td class="fw-bold text-dark"><?= $log['part_no'] ?></td>
-                            <td class="small text-truncate" style="max-width: 150px;" title="<?= $log['part_name'] ?>"><?= $log['part_name'] ?></td>
-                            <td class="small"><?= $log['vendor'] ?></td>
-                            <td class="small font-monospace"><?= $log['sn'] ?></td>
-                            <td><span class="badge bg-light text-dark border"><?= $log['location'] ?></span></td>
-                            <td class="small"><?= $log['category'] ?></td>
+                            <td class="small"><?= date('Y-m-d H:i', strtotime($row['created_at'])) ?></td>
                             <td>
-                                <?php if($log['status'] == 'ON'): ?>
-                                    <?php if($log['ipart_logged']): ?>
-                                        <i class="fas fa-check-circle text-success" title="已登錄"></i>
-                                    <?php else: ?>
-                                        <i class="fas fa-times-circle text-danger" title="未登錄"></i>
-                                    <?php endif; ?>
-                                <?php endif; ?>
+                                <div class="fw-bold"><?= $row['part_no'] ?></div>
+                                <div class="small text-muted text-truncate" style="max-width: 150px;"><?= $row['part_name'] ?></div>
+                            </td>
+                            <td class="small font-monospace"><?= $row['sn'] ?></td>
+                            <td><span class="badge bg-light text-dark border"><?= $row['location'] ?></span></td>
+                            <td class="small"><i class="fas fa-user-circle text-secondary me-1"></i><?= $row['dept'] ?></td>
+                            <td class="small text-muted text-truncate" style="max-width: 150px;" title="<?= $row['remark'] ?>"><?= $row['remark'] ?></td>
+                            <td class="text-end">
+                                <a href="index.php?route=ops_edit&id=<?= $row['id'] ?>" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a>
                             </td>
                         </tr>
                         <?php endforeach; ?>
@@ -126,7 +117,7 @@
 </div>
 
 <style>
-    .hover-shadow:hover { transform: translateY(-2px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; transition: all .2s; }
+.hover-shadow:hover { transform: translateY(-3px); transition: all 0.3s; box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
 </style>
 
 <?php $content = ob_get_clean(); require 'layout.php'; ?>

@@ -208,10 +208,10 @@
                 ];
             }
 
-            // 5. 管理員
+            // 5. 管理員 (修正版：移除了 Seed Data 的指引步驟)
             if (route === 'admin') {
                 return [
-                    { element: '.btn-warning', popover: { title: '系統初始化 (Seed Data)', description: '首次使用或需要匯入大量歷史數據時，請點此進入專用介面。' } },
+                    // 原本這裡有一行指引 Seed Data 按鈕的程式碼，現在已移除，避免報錯
                     { element: '#guide_admin_part', popover: { title: 'PART/Tool 主檔管理', description: '統一匯入料號與機台清單。系統會自動比對新舊資料並提示衝突。' } },
                     { element: '#guide_admin_tool', popover: { title: '機台列表維護', description: '檢視目前的機台清單，可手動新增或刪除。' } },
                     { element: '#guide_admin_loc', popover: { title: '位置管理', description: '管理儲存位置 (Location) 清單。' } }
