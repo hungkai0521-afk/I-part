@@ -42,12 +42,16 @@ function get_part_master($dept): array {
 }
 
 function sync_part_master($dept, $part_no, $name, $vendor) {
-    if (empty($part_no)) { return; }
+    if (empty($part_no)) {
+        return;
+    }
     try {
         $db = get_db($dept);
         $stmt = $db->prepare("INSERT OR IGNORE INTO part_master (part_no, name, vendor) VALUES (?, ?, ?)");
         $stmt->execute([$part_no, $name, $vendor]);
-    } catch (Exception $e) { }
+    } catch (Exception $e) {
+        // 忽略錯誤
+    }
 }
 
 function get_tool_master($dept): array {
@@ -55,16 +59,22 @@ function get_tool_master($dept): array {
         $db = get_db($dept);
         $db->exec("CREATE TABLE IF NOT EXISTS tool_master (name TEXT PRIMARY KEY)");
         return $db->query("SELECT name FROM tool_master ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
-    } catch (Exception $e) { return []; }
+    } catch (Exception $e) {
+        return [];
+    }
 }
 
 function add_tool_master($dept, $name) {
-    if (empty($name)) { return; }
+    if (empty($name)) {
+        return;
+    }
     try {
         $db = get_db($dept);
         $stmt = $db->prepare("INSERT OR IGNORE INTO tool_master (name) VALUES (?)");
         $stmt->execute([trim($name)]);
-    } catch (Exception $e) { }
+    } catch (Exception $e) {
+        // 忽略錯誤
+    }
 }
 
 function get_location_master($dept): array {
@@ -72,16 +82,22 @@ function get_location_master($dept): array {
         $db = get_db($dept);
         $db->exec("CREATE TABLE IF NOT EXISTS location_master (name TEXT PRIMARY KEY)");
         return $db->query("SELECT name FROM location_master ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
-    } catch (Exception $e) { return []; }
+    } catch (Exception $e) {
+        return [];
+    }
 }
 
 function add_location_master($dept, $name) {
-    if (empty($name)) { return; }
+    if (empty($name)) {
+        return;
+    }
     try {
         $db = get_db($dept);
         $stmt = $db->prepare("INSERT OR IGNORE INTO location_master (name) VALUES (?)");
         $stmt->execute([trim($name)]);
-    } catch (Exception $e) { }
+    } catch (Exception $e) {
+        // 忽略錯誤
+    }
 }
 
 function delete_master_item($dept, $table, $name) {
@@ -90,11 +106,10 @@ function delete_master_item($dept, $table, $name) {
         if (in_array($table, ['tool_master', 'location_master'])) {
             $stmt = $db->prepare("DELETE FROM $table WHERE name = ?");
             $stmt->execute([$name]);
-        } elseif ($table === 'part_master') {
-            $stmt = $db->prepare("DELETE FROM part_master WHERE part_no = ?");
-            $stmt->execute([$name]);
         }
-    } catch (Exception $e) { }
+    } catch (Exception $e) {
+        // 忽略錯誤
+    }
 }
 
 // ==========================================
@@ -103,25 +118,13 @@ function delete_master_item($dept, $table, $name) {
 
 function get_current_inventory($dept): array {
     $db = get_db($dept);
-    // 只抓目前狀態為 IN 的
     $sql = "SELECT p1.* FROM part_lifecycle p1 INNER JOIN (SELECT part_no, sn, MAX(id) as max_id FROM part_lifecycle GROUP BY part_no, sn) p2 ON p1.id = p2.max_id WHERE p1.status = 'IN' ORDER BY p1.part_no";
     return $db->query($sql)->fetchAll();
 }
 
 function get_mounted_parts($dept): array {
     $db = get_db($dept);
-    // 只抓目前狀態為 ON 的
     $sql = "SELECT p1.* FROM part_lifecycle p1 INNER JOIN (SELECT part_no, sn, MAX(id) as max_id FROM part_lifecycle GROUP BY part_no, sn) p2 ON p1.id = p2.max_id WHERE p1.status = 'ON' ORDER BY p1.location, p1.part_no";
-    return $db->query($sql)->fetchAll();
-}
-
-// ★ 新增：取得所有可退料項目 (IN + ON)
-function get_returnable_items($dept): array {
-    $db = get_db($dept);
-    $sql = "SELECT p1.* FROM part_lifecycle p1 
-            INNER JOIN (SELECT part_no, sn, MAX(id) as max_id FROM part_lifecycle GROUP BY part_no, sn) p2 ON p1.id = p2.max_id 
-            WHERE (p1.status = 'IN' OR p1.status = 'ON') 
-            ORDER BY p1.status, p1.part_no";
     return $db->query($sql)->fetchAll();
 }
 
@@ -134,6 +137,7 @@ function get_logs_by_date($dept, $start, $end): array {
 
 function get_csv_lifecycle_data($dept, $start, $end): array {
     $db = get_db($dept);
+    // 1. 先抓出這段時間內有異動的 "零件+序號" 組合
     $stmt = $db->prepare("SELECT DISTINCT part_no, sn, part_name, vendor FROM part_lifecycle WHERE date(created_at, 'localtime') BETWEEN ? AND ?");
     $stmt->execute([$start, $end]);
     $targets = $stmt->fetchAll();
@@ -148,31 +152,42 @@ function get_csv_lifecycle_data($dept, $start, $end): array {
         $row = [
             'part_no'  => $t['part_no'],
             'name'     => $t['part_name'],
-            'vendor'   => $t['vendor'], 
+            'vendor'   => $t['vendor'], // ★ 新增：廠商
             'sn'       => $t['sn'],
             'category' => '',
             'machine'  => '',
-            'status'   => 'Unknown',    
+            'status'   => 'Unknown',    // ★ 新增：目前狀態
             'in_date'  => '',
             'on_date'  => '',
             'out_date' => '',
-            'days'     => '',           
-            'remark'   => ''            
+            'days'     => '',           // ★ 新增：使用天數
+            'remark'   => ''            // ★ 新增：最新備註
         ];
 
+        // 遍歷歷史紀錄來填寫欄位
         foreach ($history as $h) {
-            if (!empty($h['remark'])) { $row['remark'] = $h['remark']; }
-            if (empty($row['category']) && !empty($h['category'])) { $row['category'] = $h['category']; }
+            // 更新最新備註 (優先權：OUT > ON > IN)
+            if (!empty($h['remark'])) {
+                $row['remark'] = $h['remark'];
+            }
+
+            // 更新分類
+            if (empty($row['category']) && !empty($h['category'])) {
+                $row['category'] = $h['category'];
+            }
 
             if ($h['status'] === 'IN') {
-                $row['in_date'] = substr($h['created_at'], 0, 16);
+                $row['in_date'] = substr($h['created_at'], 0, 16); // 只取到分，去掉秒
                 $row['status'] = '庫存 (IN)';
             }
             if ($h['status'] === 'ON') {
                 $row['on_date'] = substr($h['created_at'], 0, 16);
                 $row['machine'] = $h['location'];
                 $row['status'] = '上機 (ON)';
-                if (!empty($h['category'])) { $row['category'] = $h['category']; }
+                // 如果有 ON 紀錄，分類以 ON 的為準 (通常這時候才會選分類)
+                if (!empty($h['category'])) {
+                    $row['category'] = $h['category'];
+                }
             }
             if ($h['status'] === 'OUT') {
                 $row['out_date'] = substr($h['created_at'], 0, 16);
@@ -180,89 +195,162 @@ function get_csv_lifecycle_data($dept, $start, $end): array {
             }
         }
 
+        // ★ 計算上機天數 (Days)
+        // 邏輯：如果有 ON 但沒有 OUT -> 計算到今天 (還在機台上)
+        //       如果有 ON 且有 OUT -> 計算 ON 到 OUT 的期間
         if (!empty($row['on_date'])) {
             $start_dt = new DateTime($row['on_date']);
+            
             if (!empty($row['out_date'])) {
+                // 已經退料：計算區間
                 $end_dt = new DateTime($row['out_date']);
                 $diff = $start_dt->diff($end_dt);
                 $row['days'] = $diff->days;
             } else {
+                // 還在機台上：計算到今天
                 $now = new DateTime();
                 $diff = $start_dt->diff($now);
                 $row['days'] = $diff->days . " (Running)";
             }
         }
+
         $result[] = $row;
     }
     return $result;
 }
 
+// ★ 修改：完整記錄每個時間點的「部門詳細數據 (details)」
 function get_trend_data($target_dept, $period_type, $category = 'ALL'): array {
     $scan_list = ($target_dept === 'ALL') ? DEPARTMENTS : [$target_dept];
-    $labels = []; $rates = []; $raw = []; 
+    $labels = []; 
+    $rates = []; 
+    $raw = []; 
     $today = new DateTime();
     
+    // 建立分類篩選 SQL
     $catSql = "";
-    if ($category !== 'ALL') { $catSql = " AND category = '$category'"; }
+    if ($category !== 'ALL') {
+        $catSql = " AND category = '$category'";
+    }
 
+    // 1. 日趨勢 (Daily)
     if ($period_type === 'daily') {
         for ($i = 6; $i >= 0; $i--) {
             $dt = (clone $today)->modify("-{$i} days");
             $dateStr = $dt->format('Y-m-d');
             $labels[] = $dt->format('m/d');
             
-            $total_on = 0; $total_logged = 0; $details = [];
+            $total_on = 0; 
+            $total_logged = 0; 
+            $details = []; // 儲存該日每個部門的數據
+            
             foreach ($scan_list as $dept) {
                 $db = get_db($dept);
                 $sql = "SELECT COUNT(*) as total, SUM(CASE WHEN ipart_logged=1 THEN 1 ELSE 0 END) as logged 
-                        FROM part_lifecycle WHERE status='ON' AND date(created_at, 'localtime') = '$dateStr' $catSql";
+                        FROM part_lifecycle 
+                        WHERE status='ON' AND date(created_at, 'localtime') = '$dateStr' $catSql";
                 $res = $db->query($sql)->fetch();
-                $d_on = $res['total']; $d_log = $res['logged'] ?? 0;
-                $total_on += $d_on; $total_logged += $d_log;
+                
+                $d_on = $res['total'];
+                $d_log = $res['logged'] ?? 0;
+                
+                $total_on += $d_on; 
+                $total_logged += $d_log;
+                
+                // ★ 關鍵：將此部門數據存入 details
                 $details[] = ['dept' => $dept, 'on' => $d_on, 'logged' => $d_log];
             }
-            $rates[] = ($total_on > 0) ? round(($total_logged / $total_on * 100), 1) : 0;
+            
+            if ($total_on > 0) {
+                $rates[] = round(($total_logged / $total_on * 100), 1);
+            } else {
+                $rates[] = 0;
+            }
+            
+            // ★ 將 details 存入 raw
             $raw[] = ['logged' => $total_logged, 'on' => $total_on, 'details' => $details];
         }
-    } elseif ($period_type === 'weekly') {
+    } 
+    // 2. 週趨勢 (Weekly)
+    elseif ($period_type === 'weekly') {
         for ($i = 3; $i >= 0; $i--) {
-            $dt = new DateTime(); $dt->modify("-{$i} week");
+            $dt = new DateTime(); 
+            $dt->modify("-{$i} week");
             $labels[] = "W" . $dt->format('W');
+            
             $s = $dt->setISODate((int)$dt->format('o'), (int)$dt->format('W'), 1)->format('Y-m-d');
             $e = $dt->setISODate((int)$dt->format('o'), (int)$dt->format('W'), 7)->format('Y-m-d');
             
-            $total_on = 0; $total_logged = 0; $details = [];
+            $total_on = 0; 
+            $total_logged = 0; 
+            $details = [];
+            
             foreach ($scan_list as $dept) {
                 $db = get_db($dept);
                 $sql = "SELECT COUNT(*) as total, SUM(CASE WHEN ipart_logged=1 THEN 1 ELSE 0 END) as logged 
-                        FROM part_lifecycle WHERE status='ON' AND date(created_at, 'localtime') BETWEEN '$s' AND '$e' $catSql";
+                        FROM part_lifecycle 
+                        WHERE status='ON' AND date(created_at, 'localtime') BETWEEN '$s' AND '$e' $catSql";
                 $res = $db->query($sql)->fetch();
-                $d_on = $res['total']; $d_log = $res['logged'] ?? 0;
-                $total_on += $d_on; $total_logged += $d_log;
+                
+                $d_on = $res['total'];
+                $d_log = $res['logged'] ?? 0;
+                
+                $total_on += $d_on; 
+                $total_logged += $d_log;
+                
                 $details[] = ['dept' => $dept, 'on' => $d_on, 'logged' => $d_log];
             }
-            $rates[] = ($total_on > 0) ? round(($total_logged / $total_on * 100), 1) : 0;
+            
+            if ($total_on > 0) {
+                $rates[] = round(($total_logged / $total_on * 100), 1);
+            } else {
+                $rates[] = 0;
+            }
+            
             $raw[] = ['logged' => $total_logged, 'on' => $total_on, 'details' => $details];
         }
-    } elseif ($period_type === 'monthly') {
+    } 
+    // 3. 月趨勢 (Monthly)
+    elseif ($period_type === 'monthly') {
         for ($i = 2; $i >= 0; $i--) {
             $dt = (clone $today)->modify("-{$i} months");
             $monthStr = $dt->format('Y-m');
             $labels[] = $monthStr;
-            $total_on = 0; $total_logged = 0; $details = [];
+            
+            $total_on = 0; 
+            $total_logged = 0; 
+            $details = [];
+            
             foreach ($scan_list as $dept) {
                 $db = get_db($dept);
                 $sql = "SELECT COUNT(*) as total, SUM(CASE WHEN ipart_logged=1 THEN 1 ELSE 0 END) as logged 
-                        FROM part_lifecycle WHERE status='ON' AND strftime('%Y-%m', created_at, 'localtime') = '$monthStr' $catSql";
+                        FROM part_lifecycle 
+                        WHERE status='ON' AND strftime('%Y-%m', created_at, 'localtime') = '$monthStr' $catSql";
                 $res = $db->query($sql)->fetch();
-                $d_on = $res['total']; $d_log = $res['logged'] ?? 0;
-                $total_on += $d_on; $total_logged += $d_log;
+                
+                $d_on = $res['total'];
+                $d_log = $res['logged'] ?? 0;
+                
+                $total_on += $d_on; 
+                $total_logged += $d_log;
+                
                 $details[] = ['dept' => $dept, 'on' => $d_on, 'logged' => $d_log];
             }
-            $rates[] = ($total_on > 0) ? round(($total_logged / $total_on * 100), 1) : 0;
+            
+            if ($total_on > 0) {
+                $rates[] = round(($total_logged / $total_on * 100), 1);
+            } else {
+                $rates[] = 0;
+            }
+            
             $raw[] = ['logged' => $total_logged, 'on' => $total_on, 'details' => $details];
         }
     }
-    return ['labels' => $labels, 'rates' => $rates, 'raw' => $raw];
+    
+    return [
+        'labels' => $labels, 
+        'rates' => $rates, 
+        'raw' => $raw
+    ];
 }
 ?>

@@ -6,17 +6,17 @@
         <a href="http://p58mesweb03.umc.com:8084/PMMWebSite/eParts/Login/login.cshtml?returnUrl=%2fPMMWebSite%2feParts%2fDefault" target="_blank" class="btn btn-sm btn-outline-primary me-1" title="前往 iPart 系統">
             <i class="fas fa-external-link-alt me-1"></i> iPart 系統
         </a>
-        <a href="Notes://F12AD16/48257DB0002B1BBC/EF9C1CE35692F71348256C5C0034F18C/6D22BDA971349EBD48258D63003116BF" class="btn btn-sm btn-outline-secondary" title="開啟 Notes 待建料資料庫">
+        <a href="http://【請修改這裡_填入_待建料DB_網址】" target="_blank" class="btn btn-sm btn-outline-secondary" title="查詢待建料清單">
             <i class="fas fa-database me-1"></i> 待建料 DB
         </a>
     </div>
 </div>
 
-<div class="card border-danger border-top border-3 shadow-sm" id="guide_pending_list">
+<div class="card border-danger border-top border-3 shadow-sm">
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
-                <thead class="bg-light">
+                <thead class="bg-light" id="guide_pending_table">
                     <tr>
                         <th>來源部門</th>
                         <th>上機時間</th>

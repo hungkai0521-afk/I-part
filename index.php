@@ -1,9 +1,9 @@
 <?php
-// index.php - 核心路由控制器 (CSV 標題中文化版)
+// index.php
 session_start();
 date_default_timezone_set('Asia/Taipei'); 
 
-// 引入核心函式庫
+// 引入核心函式庫 (clean_csv_value 函式已在其中定義)
 require_once 'functions.php';
 
 // ====================================================
@@ -18,7 +18,8 @@ if (!isset($_SESSION['user_id']) && $route !== 'login') {
     exit;
 }
 
-// Guest Check: 訪客權限卡控
+// Guest Check: 訪客權限卡控 (新增功能)
+// 如果是 Guest 且 嘗試進入未授權頁面 -> 強制踢回 dashboard
 if (isset($_SESSION['user_id']) && $_SESSION['user_id'] === 'Guest') {
     $allowed_routes = ['dashboard', 'logout'];
     
@@ -37,9 +38,10 @@ switch ($route) {
             $user = $_POST['username'] ?? '';
             $pwd = $_POST['password'] ?? '';
             
-            // 驗證
+            // 簡單驗證：帳號密碼相同且在部門清單內，或是 Guest/Guest
             if ((defined('DEPARTMENTS') && in_array($user, DEPARTMENTS) && $pwd === $user) || ($user === 'Guest' && $pwd === 'Guest')) {
                 $_SESSION['user_id'] = $user;
+                // 登入後導向至儀表板 (Dashboard)
                 header('Location: index.php?route=dashboard');
                 exit;
             } else {
@@ -58,12 +60,14 @@ switch ($route) {
         exit;
 
     // ------------------------------------------------
-    // 3. 儀表板 (Dashboard)
+    // 3. 儀表板 (Dashboard) - 支援分類篩選
     // ------------------------------------------------
     case 'dashboard':
         $target_dept = $_GET['dept'] ?? 'ALL';
+        // 接收分類參數
         $target_cat = $_GET['cat'] ?? 'Contract Tool Part'; 
         
+        // 將分類傳入圖表計算函式
         $trend_daily = get_trend_data($target_dept, 'daily', $target_cat);
         $trend_weekly = get_trend_data($target_dept, 'weekly', $target_cat);
         $trend_monthly = get_trend_data($target_dept, 'monthly', $target_cat);
@@ -77,6 +81,7 @@ switch ($route) {
             $scan_depts = DEPARTMENTS;
         }
 
+        // 準備分類 SQL 條件
         $catSql = "";
         if ($target_cat !== 'ALL') {
             $catSql = " AND category = '$target_cat'";
@@ -86,6 +91,7 @@ switch ($route) {
             try {
                 $db = get_db($d);
                 
+                // 表格數據也加入分類篩選 $catSql
                 $sqlOn = "SELECT COUNT(*) FROM part_lifecycle WHERE status='ON' AND date(created_at, 'localtime')=? $catSql";
                 $stmtOn = $db->prepare($sqlOn);
                 $stmtOn->execute([$today_str]);
@@ -109,6 +115,7 @@ switch ($route) {
                     'rate' => $rate
                 ];
             } catch (Exception $e) {
+                // 忽略連線錯誤 (針對 Guest 讀取不到某些 DB 的情況)
                 continue;
             }
         }
@@ -116,7 +123,7 @@ switch ($route) {
         break;
 
     // ------------------------------------------------
-    // 4. 作業中心 (Ops Center)
+    // 4. 作業中心 (List View)
     // ------------------------------------------------
     case 'ops':
         $curr_dept = $_SESSION['user_id'];
@@ -128,11 +135,14 @@ switch ($route) {
         $end_date   = $_GET['end_date'] ?? $default_end;
 
         $logs = get_logs_by_date($curr_dept, $start_date, $end_date);
+        $inventory_items = get_current_inventory($curr_dept);
+        $inv_count = count($inventory_items);
+        
         require 'views/ops_center.php';
         break;
 
     // ------------------------------------------------
-    // 5. 匯出流水帳 CSV (★ 修改：標題中文化)
+    // 5. 匯出流水帳 CSV (優化排版版)
     // ------------------------------------------------
     case 'ops_export_csv':
         if (ob_get_level()) {
@@ -151,21 +161,20 @@ switch ($route) {
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         
         $output = fopen('php://output', 'w');
-        fwrite($output, "\xEF\xBB\xBF");
+        fwrite($output, "\xEF\xBB\xBF"); // UTF-8 BOM
         
-        // ★ 修改：使用更清楚的中文標題
+        // ★ 修改：更合適的中文排版表頭
         $headers = [
             '料號 (Part No)', 
             '品名 (Name)', 
             '廠商 (Vendor)', 
             '序號 (S/N)', 
             '分類 (Category)', 
-            '位置/機台 (Location)', 
+            '機台/位置 (Location)', 
             '目前狀態 (Status)', 
             '進料時間 (IN Time)', 
             '上機時間 (ON Time)', 
             '退料時間 (OUT Time)', 
-            '上機天數 (Run Days)', 
             '備註 (Remark)'
         ];
         
@@ -175,16 +184,15 @@ switch ($route) {
             fputcsv($output, [
                 $row['part_no'],
                 $row['name'],
-                $row['vendor'],
+                $row['vendor'],     // 新增
                 $row['sn'],
                 $row['category'],
                 $row['machine'],
-                $row['status'],
+                $row['status'],     // 新增
                 $row['in_date'],
                 $row['on_date'],
                 $row['out_date'],
-                $row['days'],
-                $row['remark']
+                $row['remark']      // 新增
             ], ",", "\"", "\\");
         }
         fclose($output);
@@ -347,6 +355,7 @@ switch ($route) {
             }
             
             $ipart_logged = isset($_POST['ipart_logged']) ? 1 : 0;
+            // ★ 修改：接收 category 欄位 (確保 IN/ON 都能寫入)
             $category = $_POST['category'] ?? '';
 
             if ($status === 'IN' && !empty($location_val)) {
@@ -386,12 +395,12 @@ switch ($route) {
 
         $inventory_list = []; 
         $master_list = []; 
-        $return_list = []; 
+        $mounted_list = []; 
         
         if ($status === 'ON') {
             $inventory_list = get_current_inventory($curr_dept);
         } elseif ($status === 'OUT') {
-            $return_list = get_returnable_items($curr_dept);
+            $mounted_list = get_mounted_parts($curr_dept);
         } else {
             $master_list = get_part_master($curr_dept);
         }
@@ -407,7 +416,7 @@ switch ($route) {
         break;
 
     // ------------------------------------------------
-    // 12. 管理員：主檔管理
+    // 12. 管理員：主檔管理 (單筆新增/刪除)
     // ------------------------------------------------
     case 'admin_manage_master':
         $curr_dept = $_SESSION['user_id'];
@@ -417,19 +426,19 @@ switch ($route) {
             $action = $_POST['action']; 
             $name = trim($_POST['name']);
 
-            if ($action === 'delete') {
-                if ($type === 'tool') {
-                    delete_master_item($curr_dept, 'tool_master', $name);
-                } elseif ($type === 'location') {
-                    delete_master_item($curr_dept, 'location_master', $name);
-                } elseif ($type === 'part') {
-                    delete_master_item($curr_dept, 'part_master', $name);
-                }
-            } elseif ($action === 'add') {
-                if ($type === 'tool') {
+            if ($type === 'tool') {
+                if ($action === 'add') {
                     add_tool_master($curr_dept, $name);
-                } elseif ($type === 'location') {
+                }
+                if ($action === 'delete') {
+                    delete_master_item($curr_dept, 'tool_master', $name);
+                }
+            } elseif ($type === 'location') {
+                if ($action === 'add') {
                     add_location_master($curr_dept, $name);
+                }
+                if ($action === 'delete') {
+                    delete_master_item($curr_dept, 'location_master', $name);
                 }
             }
         }
@@ -438,10 +447,9 @@ switch ($route) {
         break;
 
     // ------------------------------------------------
-    // 13. 管理員：匯出與下載清單 (Master List)
+    // 13. 管理員：統一匯出
     // ------------------------------------------------
     case 'admin_export':
-    case 'download_template': 
         if (ob_get_level()) {
             ob_end_clean();
         }
@@ -454,48 +462,18 @@ switch ($route) {
         $db->exec("CREATE TABLE IF NOT EXISTS location_master (name TEXT PRIMARY KEY)");
         $db->exec("CREATE TABLE IF NOT EXISTS part_master (part_no TEXT PRIMARY KEY, name TEXT, vendor TEXT)");
 
-        // 下載完整清單 (範本)
-        if ($route === 'download_template') {
-            header('Content-Type: text/csv; charset=utf-8');
-            header('Content-Disposition: attachment; filename="Master_Full_List.csv"');
-            $output = fopen('php://output', 'w');
-            fwrite($output, "\xEF\xBB\xBF");
-            
-            // ★ 修改：標題中文化
-            fputcsv($output, ['分類 (Category: PART/TOOL)', '料號 (PartNo)', '品名 (Name)', '廠商 (Vendor)'], ",", "\"", "\\");
-            
-            $sqlPart = "SELECT 'PART', part_no, name, vendor FROM part_master ORDER BY part_no";
-            $stmt = $db->query($sqlPart);
-            while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
-                fputcsv($output, $row, ",", "\"", "\\");
-            }
-
-            $sqlTool = "SELECT 'TOOL', name, '', '' FROM tool_master ORDER BY name";
-            $stmt = $db->query($sqlTool);
-            while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
-                fputcsv($output, $row, ",", "\"", "\\");
-            }
-            
-            fclose($output);
-            exit;
-        }
-
-        // 個別匯出 (清單)
         if ($type === 'part') {
             $filename = "Part_Master_{$curr_dept}.csv";
-            $sql = "SELECT 'PART', part_no, name, vendor FROM part_master ORDER BY part_no";
-            // ★ 修改：標題中文化
-            $headers = ['分類 (Category)', '料號 (Part No)', '品名 (Name)', '廠商 (Vendor)'];
+            $sql = "SELECT part_no, name, vendor FROM part_master ORDER BY part_no";
+            $headers = ['PartNo', 'Name', 'Vendor'];
         } elseif ($type === 'tool') {
             $filename = "Tool_List_{$curr_dept}.csv";
-            $sql = "SELECT 'TOOL', name, '', '' FROM tool_master ORDER BY name";
-            // ★ 修改：標題中文化
-            $headers = ['分類 (Category)', '機台編號 (Tool ID)', '名稱 (Name)', '備註 (Remark)'];
+            $sql = "SELECT name FROM tool_master ORDER BY name";
+            $headers = ['Tool ID'];
         } elseif ($type === 'location') {
             $filename = "Location_List_{$curr_dept}.csv";
-            $sql = "SELECT 'LOC', name, '', '' FROM location_master ORDER BY name";
-            // ★ 修改：標題中文化
-            $headers = ['分類 (Category)', '儲存位置 (Location)', '名稱 (Name)', '備註 (Remark)'];
+            $sql = "SELECT name FROM location_master ORDER BY name";
+            $headers = ['Location'];
         } else {
             header('Location: index.php?route=admin'); 
             exit;
@@ -503,9 +481,12 @@ switch ($route) {
 
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="'.$filename.'"');
+        
         $output = fopen('php://output', 'w');
         fwrite($output, "\xEF\xBB\xBF");
+        
         fputcsv($output, $headers, ",", "\"", "\\");
+        
         $stmt = $db->query($sql);
         while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
             fputcsv($output, $row, ",", "\"", "\\");
@@ -515,7 +496,7 @@ switch ($route) {
         break;
 
     // ------------------------------------------------
-    // 14. 管理員：統一匯入 (Master Data)
+    // 14. 管理員：統一匯入 - 階段1 (完整版)
     // ------------------------------------------------
     case 'admin_import':
         $curr_dept = $_SESSION['user_id'];
@@ -531,156 +512,209 @@ switch ($route) {
 
                 $to_insert = []; 
                 $conflicts = []; 
-                $category_errors = []; 
+                $skips_count = 0; 
                 $row_idx = 0;
 
-                $stmtCheckPart = $db->prepare("SELECT * FROM part_master WHERE part_no = ?");
-                
-                $existingTools = $db->query("SELECT name FROM tool_master")->fetchAll(PDO::FETCH_COLUMN);
-                $toolMap = []; foreach($existingTools as $v) { $toolMap[strtolower($v)] = $v; }
+                if ($type === 'part') {
+                    $stmtCheck = $db->prepare("SELECT * FROM part_master WHERE part_no = ?");
+                } elseif ($type === 'tool') {
+                    $existing = $db->query("SELECT name FROM tool_master")->fetchAll(PDO::FETCH_COLUMN);
+                    $map = []; 
+                    foreach($existing as $v) {
+                        $map[strtolower($v)] = $v;
+                    }
+                } elseif ($type === 'location') {
+                    $existing = $db->query("SELECT name FROM location_master")->fetchAll(PDO::FETCH_COLUMN);
+                    $map = []; 
+                    foreach($existing as $v) {
+                        $map[strtolower($v)] = $v;
+                    }
+                }
 
-                // PHP 7.4 Fix
                 while (($data = fgetcsv($handle, 1000, ",", "\"", "\\")) !== FALSE) {
                     $row_idx++; 
-                    if ($row_idx == 1) continue; 
-
-                    $cat = strtoupper(clean_csv_value($data[0]??''));
-                    $key = clean_csv_value($data[1]??'');
-                    $name = clean_csv_value($data[2]??'');
-                    $vendor = clean_csv_value($data[3]??'');
-
-                    if (!$key) continue;
-
-                    if ($cat !== 'PART' && $cat !== 'TOOL') {
-                        $category_errors[] = [
-                            'raw_cat' => $cat,
-                            'key' => $key,
-                            'csv' => ['cat'=>$cat, 'key'=>$key, 'name'=>$name, 'vendor'=>$vendor]
-                        ];
+                    if ($row_idx == 1) {
                         continue;
                     }
 
-                    if ($cat === 'PART') {
-                        $stmtCheckPart->execute([$key]);
-                        $exist = $stmtCheckPart->fetch();
+                    if ($type === 'part') {
+                        $p = clean_csv_value($data[0]??''); 
+                        $n = clean_csv_value($data[1]??''); 
+                        $v = clean_csv_value($data[2]??'');
+                        
+                        if (!$p) continue;
+
+                        $stmtCheck->execute([$p]);
+                        $exist = $stmtCheck->fetch();
                         
                         if ($exist) {
-                            if ($exist['name'] !== $name || $exist['vendor'] !== $vendor) {
+                            if ($exist['name'] !== $n || $exist['vendor'] !== $v) {
                                 $conflicts[] = [
-                                    'type' => 'PART',
-                                    'key' => $key, 
+                                    'key' => $p, 
                                     'db' => $exist, 
-                                    'csv' => ['part_no'=>$key, 'name'=>$name, 'vendor'=>$vendor]
+                                    'csv' => ['part_no'=>$p, 'name'=>$n, 'vendor'=>$v]
                                 ];
+                            } else { 
+                                $skips_count++; 
                             }
                         } else {
-                            $to_insert[] = ['type'=>'PART', 'part_no'=>$key, 'name'=>$name, 'vendor'=>$vendor];
+                            $to_insert[] = ['part_no'=>$p, 'name'=>$n, 'vendor'=>$v];
                         }
-                    }
 
-                    if ($cat === 'TOOL') {
-                        if (!isset($toolMap[strtolower($key)])) {
-                            $to_insert[] = ['type'=>'TOOL', 'name'=>$key];
+                    } else {
+                        $val = clean_csv_value($data[0]??'');
+                        if (!$val) continue;
+                        $val_lower = strtolower($val);
+
+                        if (isset($map[$val_lower])) {
+                            if ($map[$val_lower] !== $val) { 
+                                $conflicts[] = [
+                                    'key' => $val, 
+                                    'db' => ['name'=>$map[$val_lower]], 
+                                    'csv' => ['name'=>$val]
+                                ];
+                            } else { 
+                                $skips_count++; 
+                            }
+                        } else {
+                            $to_insert[] = ['name'=>$val];
                         }
                     }
                 }
                 fclose($handle);
 
-                if (count($conflicts) > 0 || count($category_errors) > 0) {
+                if (count($conflicts) > 0) {
+                    $_SESSION['import_type'] = $type;
                     $_SESSION['import_inserts'] = $to_insert;
                     $_SESSION['import_conflicts'] = $conflicts;
-                    $_SESSION['import_cat_errors'] = $category_errors;
+                    $_SESSION['import_skips'] = $skips_count;
                     $show_conflict_ui = true;
                 } else {
-                    $added_items = [];
-                    $stmtInPart = $db->prepare("INSERT OR IGNORE INTO part_master (part_no, name, vendor) VALUES (?, ?, ?)");
-                    $stmtInTool = $db->prepare("INSERT OR IGNORE INTO tool_master (name) VALUES (?)");
-
-                    foreach ($to_insert as $item) {
-                        if ($item['type'] === 'PART') {
-                            $stmtInPart->execute([$item['part_no'], $item['name'], $item['vendor']]);
-                        } else {
-                            $stmtInTool->execute([$item['name']]);
-                        }
-                        $added_items[] = $item;
+                    if ($type === 'part') {
+                        $sql = "INSERT OR IGNORE INTO part_master (part_no, name, vendor) VALUES (?, ?, ?)";
+                    } elseif ($type === 'tool') {
+                        $sql = "INSERT OR IGNORE INTO tool_master (name) VALUES (?)";
+                    } elseif ($type === 'location') {
+                        $sql = "INSERT OR IGNORE INTO location_master (name) VALUES (?)";
                     }
-                    $import_success = true;
+                    
+                    $stmtIn = $db->prepare($sql);
+                    foreach ($to_insert as $item) {
+                        if ($type === 'part') {
+                            $stmtIn->execute([$item['part_no'], $item['name'], $item['vendor']]);
+                        } else {
+                            $stmtIn->execute([$item['name']]);
+                        }
+                    }
+                    $msg = "匯入成功！新增 ".count($to_insert)." 筆，略過(重複) $skips_count 筆。";
                 }
             } else { 
                 $error = "檔案讀取失敗"; 
             }
         }
         
-        $part_list_all = get_part_master($curr_dept);
+        $stmt = $db->query("SELECT * FROM part_lifecycle ORDER BY id DESC LIMIT 100");
+        $my_records = $stmt->fetchAll();
         $tool_list = get_tool_master($curr_dept); 
         $location_list = get_location_master($curr_dept);
-        $stmt = $db->query("SELECT * FROM part_lifecycle ORDER BY id DESC LIMIT 50");
-        $my_records = $stmt->fetchAll();
         require 'views/admin.php';
         break;
 
     // ------------------------------------------------
-    // 15. 管理員：衝突解決
+    // 15. 管理員：統一衝突解決 - 階段2 (完整版)
     // ------------------------------------------------
     case 'admin_resolve_conflict':
         $curr_dept = $_SESSION['user_id'];
         $db = get_db($curr_dept);
         
+        $type = $_SESSION['import_type'] ?? 'part';
         $inserts = $_SESSION['import_inserts'] ?? [];
         $conflicts = $_SESSION['import_conflicts'] ?? [];
-        $cat_errors = $_SESSION['import_cat_errors'] ?? [];
         $decisions = $_POST['decision'] ?? [];
-        $cat_fix = $_POST['cat_fix'] ?? [];
 
-        $added_items = [];
-        $updated_items = [];
+        $added = 0; 
+        $updated = 0; 
+        $skipped = $_SESSION['import_skips'] ?? 0;
 
-        $stmtInPart = $db->prepare("INSERT OR IGNORE INTO part_master (part_no, name, vendor) VALUES (?, ?, ?)");
-        $stmtInTool = $db->prepare("INSERT OR IGNORE INTO tool_master (name) VALUES (?)");
+        if ($type === 'part') {
+            $sqlIn = "INSERT OR IGNORE INTO part_master (part_no, name, vendor) VALUES (?, ?, ?)";
+        } elseif ($type === 'tool') {
+            $sqlIn = "INSERT OR IGNORE INTO tool_master (name) VALUES (?)";
+        } elseif ($type === 'location') {
+            $sqlIn = "INSERT OR IGNORE INTO location_master (name) VALUES (?)";
+        }
 
+        $stmtIn = $db->prepare($sqlIn);
         foreach ($inserts as $item) {
-            if ($item['type'] === 'PART') {
-                $stmtInPart->execute([$item['part_no'], $item['name'], $item['vendor']]);
+            if ($type === 'part') {
+                $stmtIn->execute([$item['part_no'], $item['name'], $item['vendor']]);
             } else {
-                $stmtInTool->execute([$item['name']]);
+                $stmtIn->execute([$item['name']]);
             }
-            $added_items[] = $item;
+            $added++;
         }
 
-        $stmtUpdPart = $db->prepare("UPDATE part_master SET name = ?, vendor = ? WHERE part_no = ?");
-        foreach ($conflicts as $idx => $c) {
-            $decision = $decisions[$idx] ?? 'db';
-            if ($decision === 'csv') {
-                $stmtUpdPart->execute([$c['csv']['name'], $c['csv']['vendor'], $c['key']]);
-                $updated_items[] = $c['csv'];
+        if ($type === 'part') {
+            $stmtUpd = $db->prepare("UPDATE part_master SET name = ?, vendor = ? WHERE part_no = ?");
+            
+            foreach ($conflicts as $idx => $c) {
+                $key = $c['key']; 
+                $decision = $decisions[$idx] ?? 'db'; 
+                
+                if ($decision === 'csv') {
+                    $stmtUpd->execute([$c['csv']['name'], $c['csv']['vendor'], $key]);
+                    $updated++;
+                } else { 
+                    $skipped++; 
+                }
+            }
+        } else {
+            $stmtDel = $db->prepare("DELETE FROM " . ($type=='tool'?'tool_master':'location_master') . " WHERE name = ?");
+            $stmtAdd = $db->prepare($sqlIn); 
+
+            foreach ($conflicts as $idx => $c) {
+                $key = $c['key']; 
+                $decision = $decisions[$idx] ?? 'db';
+                
+                if ($decision === 'csv') {
+                    $stmtDel->execute([$c['db']['name']]); 
+                    $stmtAdd->execute([$c['csv']['name']]); 
+                    $updated++;
+                } else { 
+                    $skipped++; 
+                }
             }
         }
 
-        foreach ($cat_errors as $idx => $err) {
-            $choice = $cat_fix[$idx] ?? 'skip';
-            $csv = $err['csv'];
-            if ($choice === 'PART') {
-                $stmtInPart->execute([$csv['key'], $csv['name'], $csv['vendor']]);
-                $added_items[] = ['type'=>'PART', 'part_no'=>$csv['key'], 'name'=>$csv['name'], 'vendor'=>$csv['vendor']];
-            } elseif ($choice === 'TOOL') {
-                $stmtInTool->execute([$csv['key']]);
-                $added_items[] = ['type'=>'TOOL', 'name'=>$csv['key']];
-            }
-        }
+        unset($_SESSION['import_type'], $_SESSION['import_inserts'], $_SESSION['import_conflicts'], $_SESSION['import_skips']);
+        $msg = "處理完成：新增 $added 筆，更新 $updated 筆，略過 $skipped 筆。";
 
-        unset($_SESSION['import_inserts'], $_SESSION['import_conflicts'], $_SESSION['import_cat_errors']);
-        $import_success = true;
-
-        $part_list_all = get_part_master($curr_dept);
+        $stmt = $db->query("SELECT * FROM part_lifecycle ORDER BY id DESC LIMIT 100");
+        $my_records = $stmt->fetchAll();
         $tool_list = get_tool_master($curr_dept); 
         $location_list = get_location_master($curr_dept);
-        $stmt = $db->query("SELECT * FROM part_lifecycle ORDER BY id DESC LIMIT 50");
-        $my_records = $stmt->fetchAll();
         require 'views/admin.php';
         break;
 
     // ------------------------------------------------
-    // 20. 待補登清單
+    // 16. 下載範本
+    // ------------------------------------------------
+    case 'download_template':
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="part_master_template.csv"');
+        $output = fopen('php://output', 'w');
+        fwrite($output, "\xEF\xBB\xBF");
+        fputcsv($output, ['PartNo', 'Name', 'Vendor'], ",", "\"", "\\");
+        fputcsv($output, ['PN-EXAMPLE-01', 'Example Part', 'ASML'], ",", "\"", "\\");
+        fclose($output);
+        exit;
+        break;
+
+    // ------------------------------------------------
+    // 17. 待補登清單 (★ 修改：僅顯示目前部門)
     // ------------------------------------------------
     case 'ipart_pending':
         $pending = [];
@@ -694,7 +728,7 @@ switch ($route) {
         break;
 
     // ------------------------------------------------
-    // 21. API 完成補登
+    // 18. API 完成補登
     // ------------------------------------------------
     case 'api_complete':
         $dept = $_GET['dept'];
@@ -709,17 +743,16 @@ switch ($route) {
         break;
 
     // ------------------------------------------------
-    // 22. 管理員頁面
+    // 19. 管理員頁面
     // ------------------------------------------------
     case 'admin':
         $curr_dept = $_SESSION['user_id'];
         $db = get_db($curr_dept);
-        $stmt = $db->query("SELECT * FROM part_lifecycle ORDER BY id DESC LIMIT 50");
+        $stmt = $db->query("SELECT * FROM part_lifecycle ORDER BY id DESC LIMIT 100");
         $my_records = $stmt->fetchAll();
 
         $tool_list = get_tool_master($curr_dept); 
         $location_list = get_location_master($curr_dept);
-        $part_list_all = get_part_master($curr_dept);
 
         require 'views/admin.php';
         break;
